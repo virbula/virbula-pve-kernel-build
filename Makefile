@@ -6,7 +6,7 @@ PWD = $(shell pwd)
 SRC = $(PWD)/pve-kernel
 
 
-.PHONY: help build-image build-kernel clean-all
+.PHONY: help build container clone prep prep-source kernel rebuild-kernel clean clean-all run
 
 ## help: Show this help message
 help:
@@ -29,15 +29,18 @@ container:
 	cd pve-kernel; \
 	docker buildx build --platform linux/amd64 -f ../Dockerfile -t $(IMAGE_NAME) .
 
-## run: Run the container used to compile the kernel with bash shell, useful for debugging
-run:
+## run-container: Run the container used to compile the kernel with bash shell, useful for debugging
+run-container:
 	docker run --platform linux/amd64 --rm -t -v "$(PWD)/pve-kernel:/src" $(IMAGE_NAME) /bin/bash
+
+## prep-source: Same as prep
+prep-source: prep
 
 ## prep: Run make build-dir-fresh to create build-directory so that we got final packaging control files from the .in templates generated
 prep:
-	echo 
-	echo "Running make build-dir-fresh to create build directory and get the packaging control files from the .in templates"
-	echo 
+	@echo 
+	@echo "Running make build-dir-fresh to create build directory and get the packaging control files from the .in templates"
+	@echo 
 	docker run --platform linux/amd64 --rm -v "$(PWD)/pve-kernel:/src" $(IMAGE_NAME) /bin/bash -c "make clean && make build-dir-fresh"
 
 	@set -e; \
@@ -74,9 +77,19 @@ kernel:
 rebuild-kernel:
 	docker run --platform linux/amd64 --rm -v "$(PWD)/pve-kernel:/src" $(IMAGE_NAME) /bin/bash -c "make clean && make deb"
 
-## clean-all: Remove the Docker image and clean the local source tree
+
+## clean:  run a make clean inside the pve-kernel directory, this does not remove the source tree
+clean: 
+	cd pve-kernel; \
+	-docker rmi $(IMAGE_NAME); \
+	make clean; \
+
+
+## clean-all: Remove the Docker image and clean the local source tree completely, leaving only this meta git repo
 clean-all:
 	cd pve-kernel; \
 	-docker rmi $(IMAGE_NAME); \
-	rm -rf submodules; \
 	make clean
+
+
+	rm -rf pve-kernel
