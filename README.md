@@ -1,5 +1,7 @@
-# pve-kernel-build
+# Virbula pve-kernel-build
 Automated PVE Kernel Build With Docker Containers, used by the Virbula team for building and customizing the PVE Kernel for experimentation.
+
+AGPL v3.0 license, open source as Proxmox PVE license. 
 
 
 # Steps
