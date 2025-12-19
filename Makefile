@@ -1,47 +1,49 @@
-#SHELL := /bin/bash
+# Makefile for building Proxmox VE kernel packages in a Docker build environment
+
+SHELL := /bin/bash
 
 # Variables
-IMAGE_NAME = pve-kernel-builder
-PWD = $(shell pwd)
-SRC = $(PWD)/pve-kernel
+IMAGE_NAME := pve-kernel-builder
+PWD        := $(shell pwd)
+SRC        := $(PWD)/pve-kernel
 
+.PHONY: help clone build-container build run-container run prep-source prep kernel rebuild-kernel clean clean-all run
 
-.PHONY: help build container clone prep prep-source kernel rebuild-kernel clean clean-all run
-
-## help: Show this help message
-help:
+help: ## Show this help message
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Targets:"
-	@sed -n 's/^##//p' $(MAKEFILE_LIST) | column -t -s ':' |  sed -e 's/^/ /'
+	@awk 'BEGIN { FS=":.*##" } \
+		/^[a-zA-Z0-9_.-]+:.*##/ { \
+			printf "  %-20s %s\n", $$1, $$2 \
+		}' $(MAKEFILE_LIST)
 
-
-## clone:  Clone the pve-kernel source code from the proxmox git repo
-clone:
+clone: ## Clone the pve-kernel source code from the Proxmox git repo
 	git clone git://git.proxmox.com/git/pve-kernel.git
 	cd pve-kernel && git submodule update --init --recursive
 
-## build:  Same as container,  build the docker container used to compile the PVE Kernel
-build: container
 
-## container: Create the Docker container environment with all dependencies
-container:
+build-container: ## Create the Docker container image (linux/amd64) with all the build tools which can be used to compile the PVE kernel
 	cd pve-kernel; \
 	docker buildx build --platform linux/amd64 -f ../Dockerfile -t $(IMAGE_NAME) .
 
-## run-container: Run the container used to compile the kernel with bash shell, useful for debugging
-run-container:
-	docker run --platform linux/amd64 --rm -t -v "$(PWD)/pve-kernel:/src" $(IMAGE_NAME) /bin/bash
+build: build-container ## -- Alias for build-container
 
-## prep-source: Same as prep
-prep-source: prep
+run-container: ## Run the build container with an interactive bash shell (debugging)
+	docker run --platform linux/amd64 --rm -t \
+		-v "$(PWD)/pve-kernel:/src" \
+		$(IMAGE_NAME) /bin/bash
 
-## prep: Run make build-dir-fresh to create build-directory so that we got final packaging control files from the .in templates generated
-prep:
-	@echo 
-	@echo "Running make build-dir-fresh to create build directory and get the packaging control files from the .in templates"
-	@echo 
-	docker run --platform linux/amd64 --rm -v "$(PWD)/pve-kernel:/src" $(IMAGE_NAME) /bin/bash -c "make clean && make build-dir-fresh"
+run: run-container ## -- Alias for run-container
+
+
+prep-source:  ## Create build dir and install build-deps from generated debian/control
+	@echo
+	@echo "Running make build-dir-fresh to create build directory and packaging control files"
+	@echo
+	docker run --platform linux/amd64 --rm \
+		-v "$(PWD)/pve-kernel:/src" \
+		$(IMAGE_NAME) /bin/bash -c "make clean && make build-dir-fresh"
 
 	@set -e; \
 	BUILDDIR=""; \
@@ -61,35 +63,30 @@ prep:
 	fi; \
 	docker run --platform linux/amd64 --rm -it \
 		-v "$(SRC):/src" \
-		"$(IMAGE_NAME)" \
-		/bin/bash -lc \
-                "mk-build-deps -ir $$BUILDDIR/debian/control"
+		$(IMAGE_NAME) /bin/bash -lc \
+		"mk-build-deps -ir $$BUILDDIR/debian/control"
 
-## kernel: Run the compilation process inside the container to produce .deb packages
-kernel:
+prep: prep-source ## -- Alias for prep-source
+
+kernel: ## Build kernel .deb packages inside the container (make deb)
 	docker run --platform linux/amd64 --rm -it \
 		-v "$(SRC):/src" \
-		"$(IMAGE_NAME)" \
-		/bin/bash -lc \
-                "make deb"
+		$(IMAGE_NAME) /bin/bash -lc \
+		"make deb"
 
-## rebuild-kernel: Clean up and Run the compilation process inside the container to produce .deb packages
-rebuild-kernel:
-	docker run --platform linux/amd64 --rm -v "$(PWD)/pve-kernel:/src" $(IMAGE_NAME) /bin/bash -c "make clean && make deb"
+rebuild-kernel: ## Clean and rebuild kernel .deb packages inside the container
+	docker run --platform linux/amd64 --rm \
+		-v "$(PWD)/pve-kernel:/src" \
+		$(IMAGE_NAME) /bin/bash -c "make clean && make deb"
 
-
-## clean:  run a make clean inside the pve-kernel directory, this does not remove the source tree
-clean: 
-	cd pve-kernel; \
-	-docker rmi $(IMAGE_NAME); \
-	make clean; \
-
-
-## clean-all: Remove the Docker image and clean the local source tree completely, leaving only this meta git repo
-clean-all:
+clean: ## Run make clean in pve-kernel and remove Docker image (keeps source tree)
 	cd pve-kernel; \
 	-docker rmi $(IMAGE_NAME); \
 	make clean
 
-
+clean-all: ## Remove Docker image and delete the local pve-kernel source tree
+	cd pve-kernel; \
+	-docker rmi $(IMAGE_NAME); \
+	make clean
 	rm -rf pve-kernel
+
