@@ -7,7 +7,7 @@ SHELL := /bin/bash
 IMAGE_NAME   := pve-kernel-builder
 CONTAINER_NAME := pve-kernel-builder
 PWD          := $(shell pwd)
-OUTDIR       := $(PWD)/build
+OUTDIR       := $(PWD)/output
 VOLUME_NAME  := pve-kernel-src
 
 # Where the repo lives inside the container
@@ -128,6 +128,11 @@ export-debs: build-container volume-create ## Copy built .deb packages from the 
 			echo "[INFO] Exporting $${#DEBS[@]} .deb package(s) to /out"; \
 			cp -v "$${DEBS[@]}" /out/; \
 		'
+	@echo
+	@echo "------ Exported the .deb packages ------"
+	@echo "Directory: $(OUTDIR)"
+	@ls -l $(OUTDIR)
+	@echo
 
 all: prep-source kernel export-debs ## Full pipeline: init/prep -> build -> export artifacts
 
